@@ -1,0 +1,1 @@
+salloc --cpus-per-task=4 --gpus=1 --mem-per-gpu=44GB --partition=spgpu --time=0-02:00:00 --account=eecs498s014f24_class
