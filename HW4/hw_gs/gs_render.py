@@ -312,23 +312,14 @@ class GaussRenderer(nn.Module):
                 # Step 2: calculate alpha. alpha = (gauss_weight[..., None] * sorted_opacity[None]).clip(max=0.99)
                 # Step 3: calculate the accumulated alpha, color and depth.
 
-                # print(f"dx: {dx.shape}")
-                # print(f"sorted_inverse_conv: {sorted_inverse_conv.shape}")
                 gauss_weight = torch.exp(-0.5 * torch.einsum('bpd,pde,bpe->bp', dx, sorted_inverse_conv, dx))
                 alpha = (gauss_weight[..., None] * sorted_opacity[None]).clip(max=0.99)
-                # print(f"alpha: {alpha.shape}")
-                # print(f"render_alpha: {self.render_alpha[h : h + TILE_SIZE, w : w + TILE_SIZE].shape}")
                 T = torch.roll(torch.cumprod(1 - alpha, dim=1), 1, dims=1)
                 T[:, 0] = 1
 
-                # print(f"T: {T.shape}")
                 acc_alpha = (alpha * T).sum(dim=1)
-                # print(f"acc_alpha: {acc_alpha.shape}")
-                # print(f"sorted_color: {sorted_color.shape}") # [P, 3]
                 tile_color = (T * alpha * sorted_color).sum(dim=1) + (1 - acc_alpha) * 1
-                tile_depth = (T * alpha).sum(dim=1)[:, None]
-                # print(f"tile_color: {tile_color.shape}")
-                # print(f"tile_depth: {tile_depth.shape}")
+                tile_depth = (T * alpha * sorted_depths.unsqueeze(-1)).sum(dim=1)
                 #############################################################################
                 #                             END OF YOUR CODE                              #
                 #############################################################################
