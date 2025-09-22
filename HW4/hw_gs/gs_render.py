@@ -66,7 +66,15 @@ def build_rotation(r):
     # Get the rotation matrix from the quaternion
     # Here, we already help you initialize the Rotation Matrix to be (3x3) all zero matrix
     R = torch.zeros((q.size(0), 3, 3), device="cuda")
-
+    R[:, 0, 0] = 1 - 2 * (y**2 + z**2)
+    R[:, 0, 1] = 2 * (x * y - z * r)
+    R[:, 0, 2] = 2 * (x * z + y * r)
+    R[:, 1, 0] = 2 * (x * y + z * r)
+    R[:, 1, 1] = 1 - 2 * (x**2 + z**2)
+    R[:, 1, 2] = 2 * (y * z - x * r)
+    R[:, 2, 0] = 2 * (x * z - y * r)
+    R[:, 2, 1] = 2 * (y * z + x * r)
+    R[:, 2, 2] = 1 - 2 * (x**2 + y**2)
     #############################################################################
     #                             END OF YOUR CODE                              #
     #############################################################################
@@ -95,7 +103,7 @@ def build_scaling_rotation(scaling_vector, quaternion_vector):
     # Get the scaling matrix from the scaling vector
     # Hint: Check Formula 3 in the isntruction pdf
 
-    # S = ...
+    S = torch.diag_embed(scaling_vector)
     #############################################################################
     #                             END OF YOUR CODE                              #
     #############################################################################
@@ -169,7 +177,7 @@ def build_covariance_2d(mean3d, cov3d, viewmatrix, fov_x, fov_y, focal_x, focal_
     # Calculate the 2D covariance matrix cov2d
     # Hint: Check Args explaination for cov3d; For clean code of matrix multiplication, consider using @
 
-    # cov2d = ...
+    cov2d = J @ W @ cov3d @ W.T @ J.transpose(1, 2)
     #############################################################################
     #                             END OF YOUR CODE                              #
     #############################################################################
@@ -273,7 +281,7 @@ class GaussRenderer(nn.Module):
                 # check if the 2D gaussian intersects with the tile 
                 # To do so, we need to check if the rectangle of the 2D gaussian (rect) intersects with the tile
 
-                # in_mask = .....
+                in_mask = (rect[0][:, 0] < w + TILE_SIZE) & (rect[1][:, 0] > w) & (rect[0][:, 1] < h + TILE_SIZE) & (rect[1][:, 1] > h)
                 #############################################################################
                 #                             END OF YOUR CODE                              #
                 #############################################################################
@@ -304,13 +312,14 @@ class GaussRenderer(nn.Module):
                 # Step 2: calculate alpha. alpha = (gauss_weight[..., None] * sorted_opacity[None]).clip(max=0.99)
                 # Step 3: calculate the accumulated alpha, color and depth.
 
-                # gauss_weight = ... # Hint: Check step 1 in the instruction pdf
-                # alpha = ... # Hint: Check step 2 in the instruction pdf
-                # T = ... # Hint: Check Eq. (6) in the instruction pdf
+                gauss_weight = torch.exp(-0.5 * torch.einsum('bpd,pde,bpe->bp', dx, sorted_inverse_conv, dx))
+                alpha = (gauss_weight[..., None] * sorted_opacity[None]).clip(max=0.99)
+                T = torch.roll(torch.cumprod(1 - alpha, dim=1), 1, dims=1)
+                T[:, 0] = 1
 
-                # acc_alpha =  ... # Hint: Check Eq. (8) in the instruction pdf
-                # tile_color = ... # Hint: Check Eq. (5) in the instruction pdf
-                # tile_depth = ... # Hint: Check Eq. (7) in the instruction pdf
+                acc_alpha = (alpha * T).sum(dim=1)
+                tile_color = (T * alpha * sorted_color).sum(dim=1) + (1 - acc_alpha) * 1
+                tile_depth = (T * alpha * sorted_depths.unsqueeze(-1)).sum(dim=1)
                 #############################################################################
                 #                             END OF YOUR CODE                              #
                 #############################################################################

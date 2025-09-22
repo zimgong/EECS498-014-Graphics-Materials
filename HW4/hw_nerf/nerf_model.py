@@ -1,7 +1,12 @@
 import torch
 import numpy as np
 import torch.nn.functional as F
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
 
 
 def get_rays(H, W, focal, pose):
@@ -38,16 +43,16 @@ def get_rays(H, W, focal, pose):
     #  Note: the focal length here is in the unit of pixels. The coordinates are normalized with respect to the focal length (which means that should be divided by focal).
     # Plus, Cast to the device (cuda)
     
-    # dirs = 
+    dirs = torch.stack([(u-W*.5)/focal, -(v-H*.5)/focal, -torch.ones_like(u)], -1).to(device)
     
     # Step 2: Transform the direction vectors (dirs) from camera coordinates to world coordinates.
     # The provided pose is camera-to-world matrix. Please note the expected rays_d should have the shape of [N, 3], where N is the number of rays.
 
-    # rays_d = 
+    rays_d = torch.sum(dirs[..., None, :] * pose[:3, :3], -1)
 
     # Step 3: Normalize the direction vectors on the last dimension (only 3 channels) to ensure they have unit length (Hint: check torch.norm and look at keepdim parameter of it).
 
-    # rays_d = ...
+    rays_d = rays_d / torch.norm(rays_d, dim=-1, keepdim=True)
     #############################################################################
     #                             END OF YOUR CODE                              #
     #############################################################################
@@ -84,6 +89,8 @@ def positional_encoder(p, L_embed=6):
         #                                   TODO: Task 2                            #
         #############################################################################
         # hint: following the order of (sin, cos), like for fn in [torch.sin, torch.cos]:
+        for fn in [torch.sin, torch.cos]:
+            rets.append(fn(2. ** i * p))
 
         #############################################################################
         #                             END OF YOUR CODE                              #
@@ -119,16 +126,16 @@ def cumprod_exclusive(tensor: torch.Tensor):
     #############################################################################
     # Compute the cumulative product along the last dimension of the tensor. Hint: Check torch.cumprod
     
-    # cumprod = ...
+    cumprod = torch.cumprod(tensor, dim=-1)
     
     # Roll the elements along the last dimension by one position. Hint: Check torch.roll
     # This shifts the cumulative products to make them exclusive.
 
-    # cumprod = ...
+    cumprod = torch.roll(cumprod, 1, dims=-1)
 
     # Set the first element of the last dimension to 1, as the exclusive product of the first element is always 1.
     
-    # Your code here
+    cumprod[..., 0] = 1
     #############################################################################
     #                             END OF YOUR CODE                              #
     #############################################################################
@@ -192,7 +199,7 @@ def render(model, rays_o, rays_d, near, far, n_samples, rand=False):
     #############################################################################
     # Compute 3D coordinates of the sampled points along the rays.
 
-    # points = ...
+    points = rays_o[..., None, :] + rays_d[..., None, :] * t[..., :, None]
     #############################################################################
     #                             END OF YOUR CODE                              #
     #############################################################################
@@ -216,18 +223,18 @@ def render(model, rays_o, rays_d, near, far, n_samples, rand=False):
     # Tries to solve the calculation from Matrix perspective instead of the For Loop
     # Perform volume rendering to obtain the weights of each point.
 
-    # one_e_10 = ...
-    # dists = ...
-    # alpha = ...
-    # weights = ...
+    one_e_10 = torch.tensor(1e-10).to(device)
+    dists = torch.cat([t[..., 1:] - t[..., :-1], torch.tensor([1e10]).to(device)], -1)
+    alpha = 1. - torch.exp(-sigma * dists)
+    weights = alpha * cumprod_exclusive(1. - alpha + one_e_10)
     
     # Compute the weighted sum of RGB values along each ray to get the final pixel color.
 
-    # rgb_map = ...
+    rgb_map = torch.sum(weights[..., None] * rgb, -2)
 
     # Compute the depth map as the weighted sum of sampled depths.
 
-    # depth_map = ...
+    depth_map = torch.sum(weights * t, -1)
     #############################################################################
     #                             END OF YOUR CODE                              #
     #############################################################################

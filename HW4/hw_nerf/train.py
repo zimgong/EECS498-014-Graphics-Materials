@@ -12,7 +12,12 @@ import torchvision.transforms.functional as TF
 import imageio
 import gdown
 from nerf_model import VeryTinyNerfModel, get_rays, render
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
 
 mse2psnr = lambda x : -10. * torch.log(x) / torch.log(torch.Tensor([10.])).to(device)
 
@@ -62,13 +67,13 @@ def train(rawData, model, optimizer, n_iters=3000):
         # Render the scene using the current model state.
         # 
 
-        # rays_o, rays_d = ...
-        # rgb, depth = ...
+        rays_o, rays_d = get_rays(H, W, focal, pose)
+        rgb, depth = render(model, rays_o, rays_d, near=2., far=6., n_samples=n_samples)
 
-        # optimizer... 
-        # image_loss = ...
-        # image_loss.backward() # calculate the gradient w.s.t image_loss
-        # optimizer.step() # do update
+        optimizer.zero_grad()
+        image_loss = torch.nn.functional.mse_loss(rgb, target)
+        image_loss.backward()
+        optimizer.step()
 
         #############################################################################
         #                             END OF YOUR CODE                              #
@@ -150,7 +155,7 @@ def main():
         #############################################################################
         # Render the scene using the current model state. You may want to use near = 2, far = 6, n_samples = 64 
         
-        # rgb, depth = ..., 
+        rgb, depth = render(nerf, rays_o, rays_d, near=2., far=6., n_samples=64)
 
         #############################################################################
         #                             END OF YOUR CODE                              #
@@ -188,7 +193,7 @@ def main():
             #############################################################################
             # Render the scene using the current model state. You may want to use near = 2, far = 6, n_samples = 64.
 
-            # rgb, depth = ...
+            rgb, depth = render(nerf, rays_o, rays_d, near=2., far=6., n_samples=64)
             #############################################################################
             #                             END OF YOUR CODE                              #
             #############################################################################
