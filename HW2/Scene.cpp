@@ -6,6 +6,59 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
 
+// Vec3 Scene::trace(const Ray &ray, int bouncesLeft, bool discardEmission) {
+//     if constexpr(DEBUG) {
+//         assert (ray.isNormalized());
+//     }
+//     if (bouncesLeft < 0) return {};
+
+//     // TODO...
+//     Intersection inter = getIntersection(ray);
+//     if (!inter.happened) return {};
+
+//     Vec3 diffuseColor = inter.getDiffuseColor();
+//     return diffuseColor;
+// }
+
+// Vec3 Scene::trace(const Ray &ray, int bouncesLeft, bool discardEmission) {
+//     if constexpr(DEBUG) {
+//         assert (ray.isNormalized());
+//     }
+//     if (bouncesLeft < 0) return {};
+
+//     // TODO...
+//     Intersection inter = getIntersection(ray);
+//     if (!inter.happened) return {};
+//     Vec3 emission = inter.getEmission();
+//     Ray nextRay(inter.pos, Random::randomHemisphereDirection(inter.getNormal()));
+//     Intersection nextInter = getIntersection(nextRay);
+//     if (!nextInter.happened) return emission;
+
+//     Vec3 L_i = nextInter.getEmission();
+//     Vec3 brdf = inter.calcBRDF(-nextRay.dir, -ray.dir);
+//     float cosineTerm = nextRay.dir.dot(inter.getNormal());
+//     return emission + 2 * PI * L_i * brdf * cosineTerm;
+// }
+
+// Vec3 Scene::trace(const Ray &ray, int bouncesLeft, bool discardEmission) {
+//     if constexpr(DEBUG) {
+//         assert (ray.isNormalized());
+//     }
+//     if (bouncesLeft < 0) return {};
+
+//     // TODO...
+//     Intersection inter = getIntersection(ray);
+//     if (!inter.happened) return {};
+//     Vec3 emission = inter.getEmission();
+//     Ray nextRay(inter.pos, Random::randomHemisphereDirection(inter.getNormal()));
+//     Intersection nextInter = getIntersection(nextRay);
+//     if (!nextInter.happened) return emission;
+
+//     Vec3 L_i = trace(nextRay, bouncesLeft - 1, false);
+//     Vec3 brdf = inter.calcBRDF(-nextRay.dir, -ray.dir);
+//     float cosineTerm = nextRay.dir.dot(inter.getNormal());
+//     return emission + 2 * PI * L_i * brdf * cosineTerm;
+// }
 
 Vec3 Scene::trace(const Ray &ray, int bouncesLeft, bool discardEmission) {
     if constexpr(DEBUG) {
@@ -14,8 +67,33 @@ Vec3 Scene::trace(const Ray &ray, int bouncesLeft, bool discardEmission) {
     if (bouncesLeft < 0) return {};
 
     // TODO...
-    
-    return {};
+    Intersection inter = getIntersection(ray);
+    if (!inter.happened) return {};
+    Vec3 emission = inter.getEmission();
+    Ray nextRay(inter.pos, Random::cosWeightedHemisphere(inter.getNormal()));
+    Intersection nextInter = getIntersection(nextRay);
+    Vec3 L_total;
+    if (!discardEmission) L_total = emission;
+    if (!nextInter.happened) return L_total;
+
+    Vec3 L_indirect = trace(nextRay, bouncesLeft - 1, true);
+    Vec3 brdf = inter.calcBRDF(-nextRay.dir, -ray.dir);
+    L_indirect = PI * L_indirect * brdf;
+    L_total += L_indirect;
+
+    float pdfLightSample = 1 / lightArea;
+    Intersection lightSample = sampleLight();
+    Vec3 lightDir = lightSample.pos - inter.pos;
+    float distanceToLight = lightDir.getLength();
+    lightDir.normalize();
+    Ray rayToLight(inter.pos, lightDir);
+    Intersection lightInter = getIntersection(rayToLight);
+    if (!lightInter.happened || lightInter.object != lightSample.object) return L_total;
+    brdf = inter.calcBRDF(-lightDir, -ray.dir);
+    float cosineTerm = lightDir.dot(inter.getNormal()) * lightDir.dot(-lightSample.getNormal());
+    Vec3 L_direct = lightSample.getEmission() * brdf * cosineTerm / (distanceToLight * distanceToLight) / pdfLightSample;
+
+    return L_total + L_direct;
 }
 
 tinyobj::ObjReader Scene::reader {};

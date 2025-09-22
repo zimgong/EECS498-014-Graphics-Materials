@@ -3,4 +3,6 @@ project(RayTracing)
 
 set(CMAKE_CXX_STANDARD 17)
 
+add_compile_options(-O3)
+
 add_executable(RayTracing main.cpp Scene.cpp Accel.cpp Math.cpp Ray.cpp)
